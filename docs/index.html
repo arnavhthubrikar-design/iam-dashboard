@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apex IAM</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root { --sidebar-w: 240px; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #f8fafc; color: #0f172a; }
+    .sidebar { width: var(--sidebar-w); min-height: 100vh; background: #1e293b; position: fixed; top:0; left:0; z-index:50; display:flex; flex-direction:column; }
+    .main { margin-left: var(--sidebar-w); min-height: 100vh; }
+    .nav-item { display:flex; align-items:center; gap:10px; padding:9px 16px; border-radius:8px; margin:2px 8px; cursor:pointer; color:#94a3b8; font-size:13px; font-weight:500; transition:all .15s; }
+    .nav-item:hover { background:#334155; color:#f1f5f9; }
+    .nav-item.active { background:#2563eb; color:#fff; }
+    .nav-item svg { width:16px; height:16px; flex-shrink:0; }
+    .card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+    .badge { display:inline-flex; align-items:center; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; }
+    .badge-active { background:#dcfce7; color:#16a34a; }
+    .badge-inactive { background:#f1f5f9; color:#64748b; }
+    .badge-suspended { background:#fee2e2; color:#dc2626; }
+    .badge-pending { background:#fef9c3; color:#ca8a04; }
+    .badge-approved { background:#dcfce7; color:#16a34a; }
+    .badge-denied { background:#fee2e2; color:#dc2626; }
+    .badge-success { background:#dcfce7; color:#16a34a; }
+    .badge-failure { background:#fee2e2; color:#dc2626; }
+    .badge-warning { background:#fef9c3; color:#ca8a04; }
+    .btn { display:inline-flex; align-items:center; gap:6px; padding:7px 14px; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer; border:none; transition:all .15s; }
+    .btn-primary { background:#2563eb; color:#fff; }
+    .btn-primary:hover { background:#1d4ed8; }
+    .btn-outline { background:#fff; color:#374151; border:1px solid #e2e8f0; }
+    .btn-outline:hover { background:#f8fafc; }
+    .btn-ghost { background:transparent; color:#64748b; }
+    .btn-ghost:hover { background:#f1f5f9; color:#0f172a; }
+    .btn-sm { padding:4px 10px; font-size:12px; }
+    .btn-destructive { background:#dc2626; color:#fff; }
+    .btn-destructive:hover { background:#b91c1c; }
+    table { width:100%; border-collapse:collapse; }
+    th { text-align:left; font-size:12px; font-weight:600; color:#64748b; padding:10px 12px; background:#f8fafc; }
+    td { padding:10px 12px; font-size:13px; border-top:1px solid #f1f5f9; }
+    tr:hover td { background:#f8fafc; }
+    input[type=text], input[type=email], input[type=search], select, textarea { width:100%; padding:8px 12px; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; outline:none; background:#fff; color:#0f172a; }
+    input:focus, select:focus { border-color:#2563eb; box-shadow:0 0 0 2px rgba(37,99,235,.15); }
+    label { font-size:12px; font-weight:600; color:#374151; margin-bottom:4px; display:block; }
+    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:100; display:flex; align-items:center; justify-content:center; }
+    .modal { background:#fff; border-radius:16px; padding:28px; width:100%; max-width:460px; box-shadow:0 20px 60px rgba(0,0,0,.18); }
+    .modal-title { font-size:17px; font-weight:700; margin-bottom:6px; }
+    .modal-desc { font-size:13px; color:#64748b; margin-bottom:20px; }
+    .toast-container { position:fixed; bottom:24px; right:24px; z-index:200; display:flex; flex-direction:column; gap:8px; }
+    .toast { background:#1e293b; color:#f8fafc; padding:12px 18px; border-radius:10px; font-size:13px; font-weight:500; box-shadow:0 4px 20px rgba(0,0,0,.2); animation:slideIn .25s ease; }
+    .toast.success { background:#16a34a; }
+    .toast.error { background:#dc2626; }
+    @keyframes slideIn { from { transform:translateX(60px); opacity:0; } to { transform:translateX(0); opacity:1; } }
+    .avatar { width:28px; height:28px; border-radius:50%; background:#dbeafe; color:#2563eb; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0; }
+    .page { display:none; }
+    .page.active { display:block; }
+    .search-wrap { position:relative; }
+    .search-wrap svg { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#94a3b8; width:14px; height:14px; }
+    .search-wrap input { padding-left:32px; }
+    ::-webkit-scrollbar { width:6px; height:6px; }
+    ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:10px; }
+    @media(max-width:768px) { .sidebar { transform:translateX(-100%); transition:.2s; } .sidebar.open { transform:translateX(0); } .main { margin-left:0; } }
+  </style>
+</head>
+<body>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
+  <div style="padding:20px 16px 12px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:32px;height:32px;background:#2563eb;border-radius:8px;display:flex;align-items:center;justify-content:center;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" width="18" height="18"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      </div>
+      <div>
+        <div style="color:#f1f5f9;font-size:15px;font-weight:700;">Apex IAM</div>
+        <div style="color:#64748b;font-size:11px;">Identity & Access</div>
+      </div>
+    </div>
+  </div>
+  <nav style="flex:1;padding:8px 0;">
+    <div class="nav-item active" onclick="navigate('dashboard')" id="nav-dashboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Dashboard
+    </div>
+    <div class="nav-item" onclick="navigate('users')" id="nav-users">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Users
+    </div>
+    <div class="nav-item" onclick="navigate('roles')" id="nav-roles">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Roles
+    </div>
+    <div class="nav-item" onclick="navigate('permissions')" id="nav-permissions">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41M22 12h-2M4 12H2M12 22v-2M12 4V2"/></svg>
+      Permissions
+    </div>
+    <div class="nav-item" onclick="navigate('access-requests')" id="nav-access-requests">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><path d="M21 12c0 4.97-4.03 9-9 9S3 16.97 3 12 7.03 3 12 3s9 4.03 9 9z"/></svg>
+      Access Requests
+    </div>
+    <div class="nav-item" onclick="navigate('audit-log')" id="nav-audit-log">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      Audit Log
+    </div>
+    <div class="nav-item" onclick="navigate('policies')" id="nav-policies">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 12h6M9 15h4"/></svg>
+      Policies
+    </div>
+    <div class="nav-item" onclick="navigate('settings')" id="nav-settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41"/><path d="M22 12h-2M4 12H2"/><path d="M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41"/><path d="M12 22v-2M12 4V2"/></svg>
+      Settings
+    </div>
+  </nav>
+  <div style="padding:16px;border-top:1px solid #334155;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div class="avatar" style="width:32px;height:32px;font-size:12px;">AR</div>
+      <div>
+        <div style="color:#f1f5f9;font-size:13px;font-weight:600;">ARNAV</div>
+        <div style="color:#64748b;font-size:11px;">Administrator</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+  <!-- Topbar -->
+  <div style="background:#fff;border-bottom:1px solid #e2e8f0;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:40;">
+    <div>
+      <h1 style="font-size:16px;font-weight:700;" id="pageTitle">Dashboard Overview</h1>
+      <p style="font-size:12px;color:#64748b;" id="pageSubtitle">Welcome back, ARNAV. Here's what's happening with your IAM environment.</p>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="position:relative;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" width="20" height="20"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <div style="position:absolute;top:-3px;right:-3px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center;">3</div>
+      </div>
+      <div class="avatar">AR</div>
+    </div>
+  </div>
+
+  <!-- Pages -->
+  <div style="padding:0;">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div style="padding:24px;">
+        <!-- KPI Cards -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;" id="kpiGrid"></div>
+        <!-- Charts -->
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px;">
+          <div class="card" style="padding:20px;">
+            <div style="font-size:13px;font-weight:600;margin-bottom:4px;">User Activity &amp; Access Trends</div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:16px;">Last 6 months overview</div>
+            <canvas id="lineChart" height="100"></canvas>
+          </div>
+          <div class="card" style="padding:20px;">
+            <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Access Request Status</div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:16px;">Current period breakdown</div>
+            <canvas id="donutChart" height="160"></canvas>
+            <div style="margin-top:12px;" id="donutLegend"></div>
+          </div>
+        </div>
+        <!-- Recent Requests Table -->
+        <div class="card">
+          <div style="padding:16px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f1f5f9;">
+            <div>
+              <div style="font-size:13px;font-weight:600;">Recent Access Requests</div>
+              <div style="font-size:12px;color:#64748b;">Latest requests requiring review</div>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="navigate('access-requests')">View All</button>
+          </div>
+          <div style="overflow-x:auto;">
+            <table id="dashRecentTable"></table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- USERS -->
+    <div class="page" id="page-users">
+      <div style="padding:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <div>
+            <h2 style="font-size:18px;font-weight:700;">User Management</h2>
+            <p style="font-size:13px;color:#64748b;" id="userCount"></p>
+          </div>
+          <button class="btn btn-primary" onclick="openAddUser()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add User
+          </button>
+        </div>
+        <div class="card">
+          <div style="padding:14px 16px;border-bottom:1px solid #f1f5f9;">
+            <div class="search-wrap" style="max-width:320px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="search" placeholder="Search users..." id="userSearch" oninput="renderUsers()" />
+            </div>
+          </div>
+          <div style="overflow-x:auto;"><table id="usersTable"></table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROLES -->
+    <div class="page" id="page-roles">
+      <div style="padding:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <div>
+            <h2 style="font-size:18px;font-weight:700;">Roles</h2>
+            <p style="font-size:13px;color:#64748b;">Manage role-based access control</p>
+          </div>
+          <button class="btn btn-primary" onclick="toast('Roles are read-only in demo mode')">+ Add Role</button>
+        </div>
+        <div id="rolesGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;"></div>
+      </div>
+    </div>
+
+    <!-- PERMISSIONS -->
+    <div class="page" id="page-permissions">
+      <div style="padding:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <div>
+            <h2 style="font-size:18px;font-weight:700;">Permissions</h2>
+            <p style="font-size:13px;color:#64748b;">16 permissions across 7 categories</p>
+          </div>
+          <button class="btn btn-primary" onclick="toast('Permissions are read-only in demo mode')">+ Add Permission</button>
+        </div>
+        <div id="permissionsContent"></div>
+      </div>
+    </div>
+
+    <!-- ACCESS REQUESTS -->
+    <div class="page" id="page-access-requests">
+      <div style="padding:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <div>
+            <h2 style="font-size:18px;font-weight:700;">Access Requests</h2>
+            <p style="font-size:13px;color:#64748b;">Review and manage access requests</p>
+          </div>
+          <button class="btn btn-primary" onclick="openNewRequest()">+ New Request</button>
+        </div>
+        <div class="card">
+          <div style="overflow-x:auto;"><table id="requestsTable"></table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AUDIT LOG -->
+    <div class="page" id="page-audit-log">
+      <div style="padding:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <div>
+            <h2 style="font-size:18px;font-weight:700;">Audit Log</h2>
+            <p style="font-size:13px;color:#64748b;">System activity and security events</p>
+          </div>
+          <button class="btn btn-outline">Export CSV</button>
+        </div>
+        <div class="card">
+          <div style="overflow-x:auto;"><table id="auditTable"></table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- POLICIES -->
+    <div class="page" id="page-policies">
+      <div style="padding:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <div>
+            <h2 style="font-size:18px;font-weight:700;">Security Policies</h2>
+            <p style="font-size:13px;color:#64748b;">Define and enforce access policies</p>
+          </div>
+          <button class="btn btn-primary" onclick="toast('Policy created (demo)')">+ Add Policy</button>
+        </div>
+        <div id="policiesContent" style="display:flex;flex-direction:column;gap:16px;"></div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="page" id="page-settings">
+      <div style="padding:24px;max-width:700px;">
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:20px;">Settings</h2>
+        <div class="card" style="padding:24px;margin-bottom:16px;">
+          <div style="font-size:14px;font-weight:600;margin-bottom:16px;">Profile</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div><label>Full Name</label><input type="text" value="ARNAV" /></div>
+            <div><label>Email</label><input type="email" value="arnav@acmecorp.com" /></div>
+            <div><label>Role</label><input type="text" value="Administrator" readonly /></div>
+            <div><label>Department</label><input type="text" value="Engineering" /></div>
+          </div>
+          <button class="btn btn-primary" style="margin-top:16px;" onclick="toast('Settings saved','success')">Save Changes</button>
+        </div>
+        <div class="card" style="padding:24px;">
+          <div style="font-size:14px;font-weight:600;margin-bottom:16px;">Security</div>
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f8fafc;border-radius:8px;">
+              <div><div style="font-size:13px;font-weight:600;">Two-Factor Authentication</div><div style="font-size:12px;color:#64748b;">Add an extra layer of security</div></div>
+              <button class="btn btn-primary btn-sm" onclick="toast('2FA enabled','success')">Enable</button>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f8fafc;border-radius:8px;">
+              <div><div style="font-size:13px;font-weight:600;">Change Password</div><div style="font-size:12px;color:#64748b;">Update your account password</div></div>
+              <button class="btn btn-outline btn-sm" onclick="toast('Password reset email sent')">Reset</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Add User Modal -->
+<div class="modal-backdrop" id="addUserModal" style="display:none;">
+  <div class="modal">
+    <div class="modal-title">Add New User</div>
+    <div class="modal-desc">Create a new user account in the IAM system.</div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div><label>Full Name</label><input type="text" id="newName" placeholder="e.g. John Smith" /></div>
+      <div><label>Email Address</label><input type="email" id="newEmail" placeholder="john@company.com" /></div>
+      <div><label>Role</label>
+        <select id="newRole">
+          <option value="">Select role</option>
+          <option>Admin</option><option>Developer</option><option>Analyst</option><option>Manager</option><option>Auditor</option>
+        </select>
+      </div>
+      <div><label>Department</label>
+        <select id="newDept">
+          <option value="">Select department</option>
+          <option>Engineering</option><option>Finance</option><option>Operations</option><option>Product</option><option>Compliance</option><option>HR</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
+      <button class="btn btn-outline" onclick="closeModal('addUserModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="createUser()">Create User</button>
+    </div>
+  </div>
+</div>
+
+<!-- Deactivate Modal -->
+<div class="modal-backdrop" id="deactivateModal" style="display:none;">
+  <div class="modal" style="max-width:380px;">
+    <div class="modal-title" id="deactivateTitle">Deactivate User</div>
+    <div class="modal-desc" id="deactivateDesc"></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
+      <button class="btn btn-outline" onclick="closeModal('deactivateModal')">Cancel</button>
+      <button class="btn btn-destructive" id="deactivateConfirm">Deactivate</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Request Modal -->
+<div class="modal-backdrop" id="newRequestModal" style="display:none;">
+  <div class="modal">
+    <div class="modal-title">New Access Request</div>
+    <div class="modal-desc">Submit a request for resource access.</div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div><label>Resource Name</label><input type="text" id="reqResource" placeholder="e.g. Production Database" /></div>
+      <div><label>Request Type</label>
+        <select id="reqType"><option>Read Access</option><option>Write Access</option><option>Admin Access</option></select>
+      </div>
+      <div><label>Reason</label><input type="text" id="reqReason" placeholder="Business justification..." /></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
+      <button class="btn btn-outline" onclick="closeModal('newRequestModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitRequest()">Submit Request</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===================== DATA =====================
+const users = [
+  { id:1, name:'Sarah Chen', email:'sarah.chen@acmecorp.com', role:'Admin', department:'Engineering', status:'active', lastLogin:'2026-03-22' },
+  { id:2, name:'Marcus Thompson', email:'m.thompson@acmecorp.com', role:'Developer', department:'Engineering', status:'active', lastLogin:'2026-03-22' },
+  { id:3, name:'Priya Patel', email:'p.patel@acmecorp.com', role:'Analyst', department:'Finance', status:'active', lastLogin:'2026-03-21' },
+  { id:4, name:"James O'Brien", email:'j.obrien@acmecorp.com', role:'Manager', department:'Operations', status:'active', lastLogin:'2026-03-20' },
+  { id:5, name:'Elena Vasquez', email:'e.vasquez@acmecorp.com', role:'Developer', department:'Product', status:'active', lastLogin:'2026-03-22' },
+  { id:6, name:'David Kim', email:'d.kim@acmecorp.com', role:'Auditor', department:'Compliance', status:'inactive', lastLogin:'2026-02-15' },
+  { id:7, name:'Olivia Nakamura', email:'o.nakamura@acmecorp.com', role:'Manager', department:'HR', status:'active', lastLogin:'2026-03-22' },
+  { id:8, name:'Robert Santos', email:'r.santos@acmecorp.com', role:'Developer', department:'Engineering', status:'suspended', lastLogin:'2026-01-10' },
+  { id:9, name:'Arnav', email:'arnav@acmecorp.com', role:'Admin', department:'Engineering', status:'active', lastLogin:'2026-03-23' }
+];
+
+const roles = [
+  { id:1, name:'Admin', description:'Full system access with all permissions', permissions:['users.read','users.write','roles.manage','policies.manage','audit.read','reports.read'], memberCount:3 },
+  { id:2, name:'Developer', description:'Access to development resources and deployments', permissions:['repos.read','repos.write','deployments.manage','ci.read','logs.read'], memberCount:18 },
+  { id:3, name:'Analyst', description:'Read access to data and reporting tools', permissions:['reports.read','data.read','dashboards.view'], memberCount:12 },
+  { id:4, name:'Manager', description:'Team management and approval workflows', permissions:['users.read','reports.read','approvals.manage','budgets.read'], memberCount:8 },
+  { id:5, name:'Auditor', description:'Read-only access to audit logs and compliance reports', permissions:['audit.read','reports.read','policies.read'], memberCount:4 }
+];
+
+const permissions = [
+  { id:1, name:'users.read', description:'View user accounts', resource:'Users', category:'User Management' },
+  { id:2, name:'users.write', description:'Create, edit, deactivate users', resource:'Users', category:'User Management' },
+  { id:3, name:'roles.manage', description:'Manage roles', resource:'Roles', category:'Access Control' },
+  { id:4, name:'policies.read', description:'View security policies', resource:'Policies', category:'Access Control' },
+  { id:5, name:'policies.manage', description:'Create and modify policies', resource:'Policies', category:'Access Control' },
+  { id:6, name:'audit.read', description:'View audit logs', resource:'Audit', category:'Compliance' },
+  { id:7, name:'reports.read', description:'Access compliance reports', resource:'Reports', category:'Compliance' },
+  { id:8, name:'repos.read', description:'View source repositories', resource:'Repositories', category:'Development' },
+  { id:9, name:'repos.write', description:'Push to repositories', resource:'Repositories', category:'Development' },
+  { id:10, name:'deployments.manage', description:'Manage CI/CD pipelines', resource:'Deployments', category:'Development' },
+  { id:11, name:'ci.read', description:'View CI pipeline runs', resource:'CI/CD', category:'Development' },
+  { id:12, name:'logs.read', description:'Access application logs', resource:'Logs', category:'Operations' },
+  { id:13, name:'approvals.manage', description:'Approve or deny requests', resource:'Approvals', category:'Workflow' },
+  { id:14, name:'data.read', description:'Read access to data warehouse', resource:'Data', category:'Analytics' },
+  { id:15, name:'dashboards.view', description:'View analytics dashboards', resource:'Dashboards', category:'Analytics' },
+  { id:16, name:'budgets.read', description:'View budget reports', resource:'Finance', category:'Finance' }
+];
+
+const accessRequests = [
+  { id:1, requesterName:'Marcus Thompson', resourceName:'Production Database', requestType:'Read Access', reason:'Need for performance analysis', status:'pending', requestedAt:'2026-03-22T09:15:00Z', resolvedBy:'' },
+  { id:2, requesterName:'Priya Patel', resourceName:'Financial Reports S3', requestType:'Read Access', reason:'Quarterly audit requirements', status:'approved', requestedAt:'2026-03-21T14:30:00Z', resolvedBy:'Sarah Chen' },
+  { id:3, requesterName:'Robert Santos', resourceName:'Admin Console', requestType:'Write Access', reason:'Requires config changes', status:'denied', requestedAt:'2026-03-20T11:00:00Z', resolvedBy:"James O'Brien" },
+  { id:4, requesterName:'Elena Vasquez', resourceName:'Customer Data API', requestType:'Read Access', reason:'Feature development requires customer context', status:'pending', requestedAt:'2026-03-22T08:45:00Z', resolvedBy:'' },
+  { id:5, requesterName:'David Kim', resourceName:'Compliance Vault', requestType:'Read Access', reason:'Annual compliance review', status:'approved', requestedAt:'2026-03-19T10:00:00Z', resolvedBy:'Sarah Chen' },
+  { id:6, requesterName:'Olivia Nakamura', resourceName:'HR Database', requestType:'Write Access', reason:'Updating employee records for Q1', status:'pending', requestedAt:'2026-03-22T11:30:00Z', resolvedBy:'' }
+];
+
+const auditLogs = [
+  { id:1, userName:'Sarah Chen', action:'User Created', resource:'User Account (Marcus T.)', status:'success', timestamp:'2026-03-22T09:30:00Z', ipAddress:'192.168.1.45' },
+  { id:2, userName:"James O'Brien", action:'Access Request Denied', resource:'Admin Console', status:'success', timestamp:'2026-03-22T09:15:00Z', ipAddress:'10.0.0.22' },
+  { id:3, userName:'Marcus Thompson', action:'Login', resource:'IAM Portal', status:'success', timestamp:'2026-03-22T08:55:00Z', ipAddress:'192.168.1.78' },
+  { id:4, userName:'Robert Santos', action:'Login Failed', resource:'IAM Portal', status:'failure', timestamp:'2026-03-22T08:20:00Z', ipAddress:'203.0.113.42' },
+  { id:5, userName:'Sarah Chen', action:'Policy Updated', resource:'MFA Enforcement Policy', status:'success', timestamp:'2026-03-21T17:00:00Z', ipAddress:'192.168.1.45' },
+  { id:6, userName:'Priya Patel', action:'Access Request Approved', resource:'Financial Reports S3', status:'success', timestamp:'2026-03-21T16:00:00Z', ipAddress:'10.0.0.55' },
+  { id:7, userName:'Elena Vasquez', action:'Role Assigned', resource:'Developer Role', status:'success', timestamp:'2026-03-21T14:00:00Z', ipAddress:'192.168.2.31' },
+  { id:8, userName:'David Kim', action:'Login', resource:'IAM Portal', status:'success', timestamp:'2026-03-21T09:30:00Z', ipAddress:'10.0.0.88' },
+  { id:9, userName:'Unknown', action:'Brute Force Detected', resource:'Auth Endpoint', status:'warning', timestamp:'2026-03-20T23:10:00Z', ipAddress:'198.51.100.73' },
+  { id:10, userName:'Olivia Nakamura', action:'User Deactivated', resource:'User Account (Temp User)', status:'success', timestamp:'2026-03-20T15:45:00Z', ipAddress:'10.0.0.11' }
+];
+
+const policies = [
+  { id:1, name:'MFA Enforcement', description:'Require multi-factor authentication for all admin and privileged users', rules:'REQUIRE mfa FOR roles IN [Admin, Manager]; DENY login WHERE mfa = false', priority:1, status:'active' },
+  { id:2, name:'Least Privilege Access', description:'Users should only have the minimum permissions required for their role', rules:'RESTRICT permissions TO role_defaults; DENY elevated_access WITHOUT approval', priority:2, status:'active' },
+  { id:3, name:'Session Timeout', description:'Automatically expire sessions after 8 hours of inactivity', rules:'EXPIRE session AFTER 8h INACTIVITY; REQUIRE re-auth FOR sensitive_operations', priority:3, status:'active' },
+  { id:4, name:'IP Allowlist', description:'Restrict access to approved corporate IP ranges only', rules:'ALLOW access FROM 192.168.0.0/16, 10.0.0.0/8; DENY access FROM external_ips', priority:4, status:'inactive' },
+  { id:5, name:'Data Classification Policy', description:'Enforce access controls based on data sensitivity classification', rules:'RESTRICT data.confidential TO clearance_level >= 3; LOG ALL access TO data.sensitive', priority:5, status:'active' }
+];
+
+const activityData = [
+  { month:'Oct', activeUsers:180, accessEvents:520 },
+  { month:'Nov', activeUsers:210, accessEvents:610 },
+  { month:'Dec', activeUsers:195, accessEvents:580 },
+  { month:'Jan', activeUsers:230, accessEvents:720 },
+  { month:'Feb', activeUsers:260, accessEvents:850 },
+  { month:'Mar', activeUsers:248, accessEvents:930 }
+];
+
+// ===================== NAVIGATION =====================
+const pageTitles = {
+  dashboard: ['Dashboard Overview', 'Welcome back, ARNAV. Here\'s what\'s happening with your IAM environment.'],
+  users: ['User Management', 'Manage user accounts and access'],
+  roles: ['Roles', 'Manage role-based access control'],
+  permissions: ['Permissions', 'View and manage system permissions'],
+  'access-requests': ['Access Requests', 'Review and manage access requests'],
+  'audit-log': ['Audit Log', 'System activity and security events'],
+  policies: ['Security Policies', 'Define and enforce access policies'],
+  settings: ['Settings', 'Manage your account and preferences']
+};
+
+function navigate(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.getElementById('nav-' + page).classList.add('active');
+  const [title, sub] = pageTitles[page];
+  document.getElementById('pageTitle').textContent = title;
+  document.getElementById('pageSubtitle').textContent = sub;
+  if (page === 'roles') renderRoles();
+  if (page === 'permissions') renderPermissions();
+  if (page === 'access-requests') renderRequests();
+  if (page === 'audit-log') renderAudit();
+  if (page === 'policies') renderPolicies();
+}
+
+// ===================== HELPERS =====================
+function badge(status) {
+  return `<span class="badge badge-${status}">${status.charAt(0).toUpperCase()+status.slice(1)}</span>`;
+}
+function initials(name) {
+  return name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+}
+function fmtDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString();
+}
+function toast(msg, type='') {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = 'toast' + (type ? ' '+type : '');
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+function closeModal(id) { document.getElementById(id).style.display='none'; }
+function openModal(id) { document.getElementById(id).style.display='flex'; }
+
+// ===================== DASHBOARD =====================
+function renderDashboard() {
+  const activeUsers = users.filter(u=>u.status==='active').length;
+  const pending = accessRequests.filter(r=>r.status==='pending').length;
+  const kpis = [
+    { label:'Total Users', value:users.length, delta:'+3 this month', up:true, bg:'#3b82f6', icon:'users' },
+    { label:'Active Roles', value:roles.length, delta:'+1 this month', up:true, bg:'#14b8a6', icon:'shield' },
+    { label:'Permissions', value:permissions.length, delta:'+2 this week', up:true, bg:'#8b5cf6', icon:'key' },
+    { label:'Pending Requests', value:pending, delta:'-2 vs yesterday', up:false, bg:'#f59e0b', icon:'file' }
+  ];
+  const icons = {
+    users: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" width="20" height="20"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    shield: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" width="20" height="20"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+    key: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" width="20" height="20"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="M15.5 7.5l3 3L22 7l-3-3"/></svg>',
+    file: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" width="20" height="20"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 13l2 2 4-4"/></svg>'
+  };
+  document.getElementById('kpiGrid').innerHTML = kpis.map(k => `
+    <div class="card" style="padding:18px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;">${k.label}</div>
+          <div style="font-size:28px;font-weight:800;margin:6px 0 4px;">${k.value}</div>
+          <div style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:${k.up?'#16a34a':'#dc2626'};">
+            <span>${k.up?'↑':'↓'}</span><span>${k.delta}</span>
+          </div>
+        </div>
+        <div style="width:40px;height:40px;background:${k.bg};border-radius:10px;display:flex;align-items:center;justify-content:center;">${icons[k.icon]}</div>
+      </div>
+    </div>
+  `).join('');
+
+  // Recent requests table
+  const recent = accessRequests.slice(0,6);
+  document.getElementById('dashRecentTable').innerHTML = `
+    <thead><tr>
+      <th style="padding-left:20px;">Requester</th><th>Resource</th><th>Type</th><th>Requested</th><th>Status</th><th style="padding-right:20px;">Action</th>
+    </tr></thead>
+    <tbody>${recent.map(r=>`
+      <tr>
+        <td style="padding-left:20px;font-weight:600;">${r.requesterName}</td>
+        <td style="color:#64748b;">${r.resourceName}</td>
+        <td>${r.requestType}</td>
+        <td style="color:#64748b;">${fmtDate(r.requestedAt)}</td>
+        <td>${badge(r.status)}</td>
+        <td style="padding-right:20px;"><button class="btn btn-ghost btn-sm" style="color:#2563eb;" onclick="navigate('access-requests')">Review</button></td>
+      </tr>
+    `).join('')}</tbody>
+  `;
+}
+
+// Charts
+let lineChartInstance, donutChartInstance;
+function initCharts() {
+  const lCtx = document.getElementById('lineChart').getContext('2d');
+  lineChartInstance = new Chart(lCtx, {
+    type: 'line',
+    data: {
+      labels: activityData.map(d=>d.month),
+      datasets: [
+        { label:'Active Users', data: activityData.map(d=>d.activeUsers), borderColor:'#2563eb', borderWidth:2.5, pointRadius:0, tension:.4, fill:false },
+        { label:'Access Events', data: activityData.map(d=>d.accessEvents), borderColor:'#14b8a6', borderWidth:2.5, pointRadius:0, tension:.4, fill:false }
+      ]
+    },
+    options: { responsive:true, plugins:{ legend:{ labels:{ font:{ size:12 } } } }, scales:{ x:{ grid:{ display:false } }, y:{ grid:{ color:'#f1f5f9' } } } }
+  });
+
+  const dCtx = document.getElementById('donutChart').getContext('2d');
+  const donutData = [{ name:'Approved', value:58, color:'#2563eb'},{name:'Pending',value:24,color:'#f59e0b'},{name:'Denied',value:18,color:'#ef4444'}];
+  donutChartInstance = new Chart(dCtx, {
+    type: 'doughnut',
+    data: { labels: donutData.map(d=>d.name), datasets:[{ data:donutData.map(d=>d.value), backgroundColor:donutData.map(d=>d.color), borderWidth:0, hoverOffset:4 }] },
+    options: { responsive:true, cutout:'60%', plugins:{ legend:{ display:false } } }
+  });
+  document.getElementById('donutLegend').innerHTML = donutData.map(d=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:6px;">
+      <div style="display:flex;align-items:center;gap:8px;"><span style="width:10px;height:10px;border-radius:50%;background:${d.color};display:inline-block;"></span><span style="color:#64748b;">${d.name}</span></div>
+      <span style="font-weight:700;">${d.value}%</span>
+    </div>
+  `).join('');
+}
+
+// ===================== USERS =====================
+function renderUsers() {
+  const q = (document.getElementById('userSearch')?.value || '').toLowerCase();
+  const filtered = users.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.department.toLowerCase().includes(q));
+  document.getElementById('userCount').textContent = users.length + ' total users';
+  document.getElementById('usersTable').innerHTML = `
+    <thead><tr>
+      <th style="padding-left:20px;">User</th><th>Role</th><th>Department</th><th>Last Login</th><th>Status</th><th style="padding-right:20px;">Actions</th>
+    </tr></thead>
+    <tbody>${filtered.length===0?`<tr><td colspan="6" style="text-align:center;padding:40px;color:#94a3b8;">No users found</td></tr>`:filtered.map((u,i)=>`
+      <tr>
+        <td style="padding-left:20px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="avatar">${initials(u.name)}</div>
+            <div><div style="font-weight:600;">${u.name}</div><div style="color:#64748b;font-size:12px;">${u.email}</div></div>
+          </div>
+        </td>
+        <td>${u.role}</td>
+        <td>${u.department}</td>
+        <td style="color:#64748b;">${u.lastLogin}</td>
+        <td>${badge(u.status)}</td>
+        <td style="padding-right:20px;">
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-ghost btn-sm" title="Edit" onclick="toast('Edit user: ${u.name}')">✏️</button>
+            <button class="btn btn-ghost btn-sm" title="${u.status==='active'?'Deactivate':'Activate'}" onclick="openDeactivate(${u.id})">${u.status==='active'?'🚫':'✅'}</button>
+          </div>
+        </td>
+      </tr>
+    `).join('')}</tbody>
+  `;
+}
+
+function openAddUser() { openModal('addUserModal'); }
+function createUser() {
+  const name = document.getElementById('newName').value.trim();
+  const email = document.getElementById('newEmail').value.trim();
+  const role = document.getElementById('newRole').value;
+  const dept = document.getElementById('newDept').value;
+  if (!name||!email||!role||!dept) { toast('Please fill in all fields','error'); return; }
+  const id = users.length + 1;
+  users.push({ id, name, email, role, department:dept, status:'active', lastLogin: new Date().toISOString().slice(0,10) });
+  closeModal('addUserModal');
+  document.getElementById('newName').value='';
+  document.getElementById('newEmail').value='';
+  document.getElementById('newRole').value='';
+  document.getElementById('newDept').value='';
+  renderUsers();
+  renderDashboard();
+  toast('User created successfully','success');
+}
+
+let deactivateTargetId = null;
+function openDeactivate(id) {
+  deactivateTargetId = id;
+  const user = users.find(u=>u.id===id);
+  const isActive = user.status==='active';
+  document.getElementById('deactivateTitle').textContent = (isActive?'Deactivate':'Activate') + ' User';
+  document.getElementById('deactivateDesc').textContent = `Are you sure you want to ${isActive?'deactivate':'activate'} ${user.name}?`;
+  const btn = document.getElementById('deactivateConfirm');
+  btn.textContent = isActive?'Deactivate':'Activate';
+  btn.className = isActive?'btn btn-destructive':'btn btn-primary';
+  btn.onclick = confirmDeactivate;
+  openModal('deactivateModal');
+}
+function confirmDeactivate() {
+  const user = users.find(u=>u.id===deactivateTargetId);
+  user.status = user.status==='active'?'inactive':'active';
+  closeModal('deactivateModal');
+  renderUsers();
+  toast(`User ${user.status==='active'?'activated':'deactivated'}`, 'success');
+}
+
+// ===================== ROLES =====================
+function renderRoles() {
+  document.getElementById('rolesGrid').innerHTML = roles.map(r=>`
+    <div class="card" style="padding:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+        <div>
+          <div style="font-size:15px;font-weight:700;">${r.name}</div>
+          <div style="font-size:12px;color:#64748b;margin-top:2px;">${r.description}</div>
+        </div>
+        <span style="background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;">${r.memberCount} members</span>
+      </div>
+      <div style="margin-top:12px;">
+        <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;">Permissions</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${r.permissions.map(p=>`<span style="background:#f1f5f9;color:#374151;font-size:11px;font-weight:500;padding:3px 8px;border-radius:6px;">${p}</span>`).join('')}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ===================== PERMISSIONS =====================
+function renderPermissions() {
+  const byCategory = {};
+  permissions.forEach(p => { if (!byCategory[p.category]) byCategory[p.category]=[]; byCategory[p.category].push(p); });
+  document.getElementById('permissionsContent').innerHTML = Object.entries(byCategory).map(([cat, perms])=>`
+    <div class="card" style="margin-bottom:16px;">
+      <div style="padding:14px 16px;border-bottom:1px solid #f1f5f9;font-size:13px;font-weight:700;color:#374151;">${cat}</div>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th><th>Resource</th></tr></thead>
+        <tbody>${perms.map(p=>`
+          <tr>
+            <td><code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:12px;">${p.name}</code></td>
+            <td style="color:#64748b;">${p.description}</td>
+            <td><span style="background:#ede9fe;color:#6d28d9;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;">${p.resource}</span></td>
+          </tr>
+        `).join('')}</tbody>
+      </table>
+    </div>
+  `).join('');
+}
+
+// ===================== ACCESS REQUESTS =====================
+function renderRequests() {
+  document.getElementById('requestsTable').innerHTML = `
+    <thead><tr>
+      <th style="padding-left:20px;">Requester</th><th>Resource</th><th>Type</th><th>Reason</th><th>Requested</th><th>Status</th><th style="padding-right:20px;">Actions</th>
+    </tr></thead>
+    <tbody>${accessRequests.map((r,i)=>`
+      <tr>
+        <td style="padding-left:20px;font-weight:600;">${r.requesterName}</td>
+        <td>${r.resourceName}</td>
+        <td>${r.requestType}</td>
+        <td style="color:#64748b;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.reason}</td>
+        <td style="color:#64748b;">${fmtDate(r.requestedAt)}</td>
+        <td>${badge(r.status)}</td>
+        <td style="padding-right:20px;">
+          ${r.status==='pending'?`
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-sm" style="background:#dcfce7;color:#16a34a;" onclick="resolveRequest(${r.id},'approved')">Approve</button>
+              <button class="btn btn-sm" style="background:#fee2e2;color:#dc2626;" onclick="resolveRequest(${r.id},'denied')">Deny</button>
+            </div>
+          `:`<span style="color:#94a3b8;font-size:12px;">Resolved by ${r.resolvedBy||'—'}</span>`}
+        </td>
+      </tr>
+    `).join('')}</tbody>
+  `;
+}
+
+function resolveRequest(id, status) {
+  const req = accessRequests.find(r=>r.id===id);
+  req.status = status;
+  req.resolvedBy = 'ARNAV';
+  renderRequests();
+  renderDashboard();
+  toast(`Request ${status}`, status==='approved'?'success':'');
+}
+
+function openNewRequest() { openModal('newRequestModal'); }
+function submitRequest() {
+  const resource = document.getElementById('reqResource').value.trim();
+  const type = document.getElementById('reqType').value;
+  const reason = document.getElementById('reqReason').value.trim();
+  if (!resource||!reason) { toast('Please fill all fields','error'); return; }
+  accessRequests.unshift({ id: accessRequests.length+1, requesterName:'ARNAV', resourceName:resource, requestType:type, reason, status:'pending', requestedAt:new Date().toISOString(), resolvedBy:'' });
+  closeModal('newRequestModal');
+  document.getElementById('reqResource').value='';
+  document.getElementById('reqReason').value='';
+  renderRequests();
+  toast('Request submitted','success');
+}
+
+// ===================== AUDIT LOG =====================
+function renderAudit() {
+  document.getElementById('auditTable').innerHTML = `
+    <thead><tr>
+      <th style="padding-left:20px;">User</th><th>Action</th><th>Resource</th><th>Status</th><th>IP Address</th><th style="padding-right:20px;">Timestamp</th>
+    </tr></thead>
+    <tbody>${auditLogs.map(l=>`
+      <tr>
+        <td style="padding-left:20px;font-weight:600;">${l.userName}</td>
+        <td>${l.action}</td>
+        <td style="color:#64748b;">${l.resource}</td>
+        <td>${badge(l.status)}</td>
+        <td style="color:#64748b;font-family:monospace;font-size:12px;">${l.ipAddress}</td>
+        <td style="color:#64748b;padding-right:20px;">${new Date(l.timestamp).toLocaleString()}</td>
+      </tr>
+    `).join('')}</tbody>
+  `;
+}
+
+// ===================== POLICIES =====================
+function renderPolicies() {
+  document.getElementById('policiesContent').innerHTML = policies.map(p=>`
+    <div class="card" style="padding:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <span style="font-size:12px;background:#dbeafe;color:#1d4ed8;font-weight:700;padding:2px 8px;border-radius:20px;">P${p.priority}</span>
+            <div style="font-size:15px;font-weight:700;">${p.name}</div>
+            ${badge(p.status)}
+          </div>
+          <div style="font-size:13px;color:#64748b;margin-bottom:10px;">${p.description}</div>
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;font-family:monospace;font-size:12px;color:#475569;">${p.rules}</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-left:16px;">
+          <button class="btn btn-outline btn-sm" onclick="toast('Policy updated','success')">Edit</button>
+          ${p.status==='active'?`<button class="btn btn-sm" style="background:#fef9c3;color:#92400e;" onclick="togglePolicy(${p.id})">Disable</button>`:`<button class="btn btn-sm" style="background:#dcfce7;color:#166534;" onclick="togglePolicy(${p.id})">Enable</button>`}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function togglePolicy(id) {
+  const p = policies.find(x=>x.id===id);
+  p.status = p.status==='active'?'inactive':'active';
+  renderPolicies();
+  toast(`Policy ${p.status}`,'success');
+}
+
+// ===================== INIT =====================
+document.addEventListener('DOMContentLoaded', () => {
+  renderDashboard();
+  renderUsers();
+  initCharts();
+  // Close modals on backdrop click
+  document.querySelectorAll('.modal-backdrop').forEach(m => {
+    m.addEventListener('click', e => { if (e.target===m) m.style.display='none'; });
+  });
+});
+</script>
+</body>
+</html>
